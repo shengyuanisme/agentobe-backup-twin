@@ -6,11 +6,11 @@ alerts:
   - rule: DOMAIN_FAILED
 
 databases:
-  - name: keycloak-db
+  - name: agentobe-keycloak-db
     engine: PG
     version: "18"
     production: true
-    cluster_name: REPLACE_WITH_MANAGED_POSTGRES_CLUSTER
+    cluster_name: agentobe-keycloak-db
     db_name: keycloak
     db_user: keycloak_app
 
@@ -42,15 +42,15 @@ services:
         scope: RUN_TIME
         type: GENERAL
       - key: KC_DB_URL
-        value: ${keycloak-db.JDBC_DATABASE_URL}
+        value: jdbc:postgresql://${agentobe-keycloak-db.HOSTNAME}:${agentobe-keycloak-db.PORT}/keycloak?sslmode=require
         scope: RUN_TIME
-        type: SECRET
+        type: GENERAL
       - key: KC_DB_USERNAME
-        value: ${keycloak-db.USERNAME}
+        value: ${agentobe-keycloak-db.USERNAME}
         scope: RUN_TIME
-        type: SECRET
+        type: GENERAL
       - key: KC_DB_PASSWORD
-        value: ${keycloak-db.PASSWORD}
+        value: ${agentobe-keycloak-db.PASSWORD}
         scope: RUN_TIME
         type: SECRET
       - key: KC_HTTP_ENABLED
