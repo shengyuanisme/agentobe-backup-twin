@@ -8,7 +8,7 @@ alerts:
 databases:
   - name: keycloak-db
     engine: PG
-    version: "16"
+    version: "18"
     production: true
     cluster_name: REPLACE_WITH_MANAGED_POSTGRES_CLUSTER
     db_name: keycloak
@@ -28,7 +28,7 @@ services:
     dockerfile_path: Dockerfile
     http_port: 8080
     instance_count: 1
-    instance_size_slug: apps-s-2vcpu-4gb
+    instance_size_slug: apps-s-1vcpu-2gb
     health_check:
       http_path: /health/ready
       initial_delay_seconds: 90
