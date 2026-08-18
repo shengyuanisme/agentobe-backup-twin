@@ -1,0 +1,91 @@
+name: agentobe-keycloak-preprod
+region: sgp
+
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED
+
+databases:
+  - name: keycloak-db
+    engine: PG
+    version: "16"
+    production: true
+    cluster_name: REPLACE_WITH_MANAGED_POSTGRES_CLUSTER
+    db_name: keycloak
+    db_user: keycloak_app
+
+domains:
+  - domain: auth.agentobe.com
+    type: PRIMARY
+
+services:
+  - name: keycloak
+    github:
+      repo: shengyuanisme/agentobe-backup-twin
+      branch: main
+      deploy_on_push: true
+    source_dir: /
+    dockerfile_path: deploy/keycloak/Dockerfile
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: apps-s-2vcpu-4gb
+    health_check:
+      http_path: /health/ready
+      initial_delay_seconds: 90
+      period_seconds: 10
+      timeout_seconds: 5
+      failure_threshold: 12
+      success_threshold: 1
+    envs:
+      - key: KC_DB
+        value: postgres
+        scope: RUN_TIME
+        type: GENERAL
+      - key: KC_DB_URL
+        value: ${keycloak-db.JDBC_DATABASE_URL}
+        scope: RUN_TIME
+        type: SECRET
+      - key: KC_DB_USERNAME
+        value: ${keycloak-db.USERNAME}
+        scope: RUN_TIME
+        type: SECRET
+      - key: KC_DB_PASSWORD
+        value: ${keycloak-db.PASSWORD}
+        scope: RUN_TIME
+        type: SECRET
+      - key: KC_HTTP_ENABLED
+        value: "true"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: KC_PROXY_HEADERS
+        value: xforwarded
+        scope: RUN_TIME
+        type: GENERAL
+      - key: KC_HOSTNAME
+        value: https://auth.agentobe.com
+        scope: RUN_TIME
+        type: GENERAL
+      - key: KC_HOSTNAME_STRICT
+        value: "true"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: KC_HEALTH_ENABLED
+        value: "true"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: KC_METRICS_ENABLED
+        value: "true"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: KC_HTTP_MANAGEMENT_HEALTH_ENABLED
+        value: "false"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: KC_BOOTSTRAP_ADMIN_USERNAME
+        value: agentobe-admin
+        scope: RUN_TIME
+        type: SECRET
+      - key: KC_BOOTSTRAP_ADMIN_PASSWORD
+        value: REPLACE_WITH_RANDOM_BOOTSTRAP_PASSWORD
+        scope: RUN_TIME
+        type: SECRET
