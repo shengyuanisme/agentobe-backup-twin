@@ -1,5 +1,5 @@
 name: agentobe-preprod
-region: sgp
+region: sfo
 
 alerts:
   - rule: DEPLOYMENT_FAILED
@@ -101,7 +101,7 @@ services:
         scope: RUN_TIME
         type: GENERAL
       - key: SPACES_REGION
-        value: sgp1
+        value: sfo3
         scope: RUN_TIME
         type: GENERAL
       - key: SPACES_ACCESS_KEY_ID

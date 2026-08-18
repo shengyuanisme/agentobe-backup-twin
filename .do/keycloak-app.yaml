@@ -1,5 +1,5 @@
 name: agentobe-keycloak-preprod
-region: sgp
+region: sfo
 
 alerts:
   - rule: DEPLOYMENT_FAILED
