@@ -10,7 +10,7 @@ RUN /opt/keycloak/bin/kc.sh build
 FROM quay.io/keycloak/keycloak:26.7.0
 
 COPY --from=builder /opt/keycloak/ /opt/keycloak/
-COPY deploy/keycloak/realm-agentobe.json /opt/keycloak/data/import/realm-agentobe.json
+COPY realm-agentobe.json /opt/keycloak/data/import/realm-agentobe.json
 
 ENTRYPOINT ["/opt/keycloak/bin/kc.sh"]
 CMD ["start", "--optimized", "--import-realm"]

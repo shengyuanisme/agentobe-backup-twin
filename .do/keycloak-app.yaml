@@ -24,8 +24,8 @@ services:
       repo: shengyuanisme/agentobe-backup-twin
       branch: main
       deploy_on_push: true
-    source_dir: /
-    dockerfile_path: deploy/keycloak/Dockerfile
+    source_dir: /deploy/keycloak
+    dockerfile_path: Dockerfile
     http_port: 8080
     instance_count: 1
     instance_size_slug: apps-s-2vcpu-4gb
