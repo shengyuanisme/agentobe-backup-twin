@@ -1,0 +1,11 @@
+.DS_Store
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+.vite/
+.wrangler/

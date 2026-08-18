@@ -1,0 +1,194 @@
+name: agentobe-preprod
+region: sgp
+
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED
+
+databases:
+  - name: agentobe-db
+    engine: PG
+    version: "16"
+    production: true
+    cluster_name: REPLACE_WITH_MANAGED_POSTGRES_CLUSTER
+    db_name: agentobe
+    db_user: agentobe_app
+
+domains:
+  - domain: app.agentobe.com
+    type: PRIMARY
+
+services:
+  - name: middleware-api
+    github:
+      repo: shengyuanisme/agentobe-backup-twin
+      branch: main
+      deploy_on_push: true
+    source_dir: /
+    dockerfile_path: apps/middleware-api/Dockerfile
+    http_port: 4100
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 20
+      period_seconds: 10
+      timeout_seconds: 5
+      failure_threshold: 5
+    envs:
+      - key: NODE_ENV
+        value: production
+        scope: RUN_TIME
+        type: GENERAL
+      - key: HOST
+        value: 0.0.0.0
+        scope: RUN_TIME
+        type: GENERAL
+      - key: PORT
+        value: "4100"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: DATABASE_URL
+        value: ${agentobe-db.DATABASE_URL}
+        scope: RUN_TIME
+        type: SECRET
+      - key: CONSOLE_ORIGINS
+        value: https://app.agentobe.com
+        scope: RUN_TIME
+        type: GENERAL
+      - key: OIDC_ISSUER
+        value: https://auth.agentobe.com/realms/agentobe
+        scope: RUN_TIME
+        type: GENERAL
+      - key: OIDC_AUDIENCE
+        value: agentobe-api
+        scope: RUN_TIME
+        type: GENERAL
+      - key: OIDC_JWKS_URI
+        value: https://auth.agentobe.com/realms/agentobe/protocol/openid-connect/certs
+        scope: RUN_TIME
+        type: GENERAL
+      - key: OIDC_ALLOWED_ALGORITHMS
+        value: RS256
+        scope: RUN_TIME
+        type: GENERAL
+      - key: AUTH_BOOTSTRAP_ORGANIZATION_ID
+        value: 00000000-0000-4000-8000-000000000010
+        scope: RUN_TIME
+        type: GENERAL
+      - key: AUTH_BOOTSTRAP_SUBJECT
+        value: REPLACE_WITH_INITIAL_OWNER_OIDC_SUBJECT
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_BOOTSTRAP_EMAIL
+        value: REPLACE_WITH_INITIAL_OWNER_EMAIL
+        scope: RUN_TIME
+        type: GENERAL
+      - key: VAULT_DRIVER
+        value: spaces
+        scope: RUN_TIME
+        type: GENERAL
+      - key: VAULT_MASTER_KEY
+        value: REPLACE_WITH_OPENSSL_RAND_BASE64_32
+        scope: RUN_TIME
+        type: SECRET
+      - key: VAULT_KEY_VERSION
+        value: v1
+        scope: RUN_TIME
+        type: GENERAL
+      - key: SPACES_BUCKET
+        value: REPLACE_WITH_PRIVATE_SPACE_NAME
+        scope: RUN_TIME
+        type: GENERAL
+      - key: SPACES_REGION
+        value: sgp1
+        scope: RUN_TIME
+        type: GENERAL
+      - key: SPACES_ACCESS_KEY_ID
+        value: REPLACE_WITH_SCOPED_SPACES_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: SPACES_SECRET_ACCESS_KEY
+        value: REPLACE_WITH_SCOPED_SPACES_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: PROJECTION_TOKEN_KEY
+        value: REPLACE_WITH_RANDOM_PROJECTION_TOKEN_KEY
+        scope: RUN_TIME
+        type: SECRET
+
+workers:
+  - name: outbox-worker
+    github:
+      repo: shengyuanisme/agentobe-backup-twin
+      branch: main
+      deploy_on_push: true
+    source_dir: /
+    dockerfile_path: apps/middleware-api/Dockerfile
+    run_command: node apps/middleware-api/dist/outbox-main.js
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    envs:
+      - key: NODE_ENV
+        value: production
+        scope: RUN_TIME
+        type: GENERAL
+      - key: DATABASE_URL
+        value: ${agentobe-db.DATABASE_URL}
+        scope: RUN_TIME
+        type: SECRET
+      - key: OUTBOX_POLL_INTERVAL_MS
+        value: "1000"
+        scope: RUN_TIME
+        type: GENERAL
+
+static_sites:
+  - name: console
+    github:
+      repo: shengyuanisme/agentobe-backup-twin
+      branch: main
+      deploy_on_push: true
+    source_dir: /
+    environment_slug: node-js
+    build_command: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @agentobe/console build
+    output_dir: apps/console/dist
+    catchall_document: index.html
+    envs:
+      - key: VITE_API_BASE_URL
+        value: /api
+        scope: BUILD_TIME
+        type: GENERAL
+      - key: VITE_OIDC_AUTHORITY
+        value: https://auth.agentobe.com/realms/agentobe
+        scope: BUILD_TIME
+        type: GENERAL
+      - key: VITE_OIDC_CLIENT_ID
+        value: agentobe-console
+        scope: BUILD_TIME
+        type: GENERAL
+      - key: VITE_OIDC_SCOPE
+        value: openid profile email agentobe-api
+        scope: BUILD_TIME
+        type: GENERAL
+      - key: VITE_OIDC_REDIRECT_URI
+        value: https://app.agentobe.com/
+        scope: BUILD_TIME
+        type: GENERAL
+      - key: VITE_OIDC_POST_LOGOUT_REDIRECT_URI
+        value: https://app.agentobe.com/
+        scope: BUILD_TIME
+        type: GENERAL
+
+ingress:
+  rules:
+    - match:
+        path:
+          prefix: /api
+      component:
+        name: middleware-api
+        preserve_path_prefix: false
+    - match:
+        path:
+          prefix: /
+      component:
+        name: console

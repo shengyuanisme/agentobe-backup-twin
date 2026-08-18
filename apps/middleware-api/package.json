@@ -1,0 +1,30 @@
+{
+  "name": "@agentobe/middleware-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "start:outbox": "node dist/outbox-main.js",
+    "build": "tsc -p tsconfig.json && mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@agentobe/contracts": "workspace:*",
+    "@agentobe/ticketing-fixtures": "workspace:*",
+    "@aws-sdk/client-s3": "3.1112.0",
+    "@fastify/cors": "11.3.0",
+    "@fastify/swagger": "9.8.1",
+    "@fastify/swagger-ui": "6.1.1",
+    "@sinclair/typebox": "0.34.52",
+    "fastify": "5.12.0",
+    "jose": "6.1.3",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/pg": "8.21.0"
+  }
+}

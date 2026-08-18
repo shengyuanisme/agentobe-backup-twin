@@ -1,0 +1,65 @@
+services:
+  outbox-worker:
+    build:
+      context: .
+      dockerfile: apps/middleware-api/Dockerfile
+    command: ["node", "apps/middleware-api/dist/outbox-main.js"]
+    environment:
+      DATABASE_URL: postgres://agentobe:agentobe-local@postgres:5432/agentobe
+      OUTBOX_POLL_INTERVAL_MS: 1000
+      VAULT_DRIVER: file
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  middleware-api:
+    build:
+      context: .
+      dockerfile: apps/middleware-api/Dockerfile
+    environment:
+      HOST: 0.0.0.0
+      PORT: 4100
+      DATABASE_URL: postgres://agentobe:agentobe-local@postgres:5432/agentobe
+      PROJECTION_TOKEN_KEY: local-compose-key-change-before-sandbox-use
+      LOG_LEVEL: info
+      CONSOLE_ORIGINS: http://localhost:4173,http://localhost:5173
+      OIDC_ISSUER: http://localhost:8080/realms/agentobe
+      OIDC_AUDIENCE: agentobe-api
+      OIDC_JWKS_URI: http://localhost:8080/realms/agentobe/protocol/openid-connect/certs
+      VAULT_DRIVER: file
+      VAULT_FILE_DIR: /tmp/agentobe-vault
+    ports:
+      - "4100:4100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4100/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: agentobe
+      POSTGRES_USER: agentobe
+      POSTGRES_PASSWORD: agentobe-local
+    ports:
+      - "54329:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentobe -d agentobe"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - agentobe-postgres:/var/lib/postgresql/data
+
+volumes:
+  agentobe-postgres:
