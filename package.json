@@ -4,16 +4,15 @@
   "private": true,
   "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck",
-    "test": "pnpm build && pnpm --filter @agentobe/middleware-api test",
-    "dev:middleware": "pnpm --filter @agentobe/middleware-api dev",
-    "db:migrate": "pnpm --filter @agentobe/middleware-api db:migrate"
+    "build": "pnpm --filter @agentobe/console build && cargo build --workspace --release",
+    "typecheck": "pnpm --filter @agentobe/console typecheck && cargo check --workspace",
+    "test": "cargo test --workspace && pnpm --filter @agentobe/console build",
+    "test:integration": "cargo test -p agentobe-middleware-api --test platform -- --ignored --nocapture",
+    "dev:middleware": "cargo run -p agentobe-middleware-api --bin agentobe-middleware-api",
+    "db:migrate": "cargo run -p agentobe-middleware-api --bin agentobe-db-migrate"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",
-    "tsx": "4.23.12",
-    "typescript": "7.0.2",
-    "vitest": "4.1.10"
+    "typescript": "7.0.2"
   }
 }

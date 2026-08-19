@@ -7,6 +7,9 @@ import {
   type MeResponse,
   type ReplicationContract,
   type ReplicationSource,
+  type Projection,
+  type SimulationBranch,
+  type SimulationMission,
   type WorkspaceAccess,
 } from "./api";
 import { initializeAuth, login, logout, oidcConfigured } from "./auth";
@@ -77,6 +80,7 @@ export function App() {
   const [me, setMe] = useState<MeResponse>();
   const [selected, setSelected] = useState<WorkspaceAccess>();
   const [authError, setAuthError] = useState<string>();
+  const [surface, setSurface] = useState<"backup" | "simulation">("backup");
 
   useEffect(() => {
     void (async () => {
@@ -105,19 +109,21 @@ export function App() {
   if (authError) return <AuthScreen title="Access denied" detail={authError} action="Try sign in" onAction={() => void login()} />;
   if (!user || !me || !selected) return <AuthScreen title="Partner access" detail="Sign in with an approved organization identity." action="Sign in with OIDC" onAction={() => void login()} />;
 
-  return <BackupTwin
-    key={selected.workspaceId}
-    access={selected}
-    accesses={me.workspaces}
-    identityName={me.identity.displayName ?? me.identity.email ?? me.identity.subject}
-    onWorkspaceChange={(workspaceId) => {
+  const common = {
+    access: selected,
+    accesses: me.workspaces,
+    identityName: me.identity.displayName ?? me.identity.email ?? me.identity.subject,
+    onWorkspaceChange: (workspaceId: string) => {
       const next = me.workspaces.find((entry) => entry.workspaceId === workspaceId);
       if (!next) return;
       configureApi(user.access_token, next.workspaceId);
       setSelected(next);
-    }}
-    onLogout={() => void logout()}
-  />;
+    },
+    onLogout: () => void logout(),
+  };
+  return surface === "backup"
+    ? <BackupTwin key={`backup-${selected.workspaceId}`} {...common} onNavigate={() => setSurface("simulation")} />
+    : <SimulationSpace key={`simulation-${selected.workspaceId}`} {...common} onNavigate={() => setSurface("backup")} />;
 }
 
 function AuthScreen(props: {
@@ -139,6 +145,7 @@ function BackupTwin(props: {
   identityName: string;
   onWorkspaceChange: (workspaceId: string) => void;
   onLogout: () => void;
+  onNavigate: () => void;
 }) {
   const [language, setLanguage] = useState<Language>("zh");
   const [sources, setSources] = useState<ReplicationSource[]>([]);
@@ -230,9 +237,10 @@ function BackupTwin(props: {
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">A</span><b>Agentobe</b></div>
         <nav>
-          <a>Overview</a>
-          <a className="active">Backup & Twin</a>
-          <a>Missions</a><a>Decisions</a><a>Execution</a><a>Audit</a>
+          <button type="button">Overview</button>
+          <button type="button" className="active">Backup & Twin</button>
+          <button type="button" onClick={props.onNavigate}>Simulation Space</button>
+          <button type="button">Decisions</button><button type="button">Execution</button><button type="button">Audit</button>
         </nav>
         <div className="boundary"><span></span><div><b>Shadow boundary</b><small>No production credentials</small></div></div>
       </aside>
@@ -339,4 +347,192 @@ function BackupTwin(props: {
       </main>
     </div>
   );
+}
+
+function SimulationSpace(props: {
+  access: WorkspaceAccess;
+  accesses: WorkspaceAccess[];
+  identityName: string;
+  onWorkspaceChange: (workspaceId: string) => void;
+  onLogout: () => void;
+  onNavigate: () => void;
+}) {
+  const [language, setLanguage] = useState<Language>("zh");
+  const [projections, setProjections] = useState<Projection[]>([]);
+  const [missions, setMissions] = useState<SimulationMission[]>([]);
+  const [selectedId, setSelectedId] = useState<string>();
+  const [detail, setDetail] = useState<SimulationMission>();
+  const [selectedBranchId, setSelectedBranchId] = useState<string>();
+  const [showMissionForm, setShowMissionForm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const can = (permission: string) => props.access.permissions.includes(permission);
+  const zh = language === "zh";
+
+  const load = useCallback(async () => {
+    setError(undefined);
+    try {
+      const [projectionData, missionData] = await Promise.all([api.projections(), api.missions()]);
+      setProjections(projectionData.items);
+      setMissions(missionData.items);
+      setSelectedId((current) => current ?? missionData.items[0]?.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to load simulation space");
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!selectedId) { setDetail(undefined); return; }
+    void api.mission(selectedId).then((mission) => {
+      setDetail(mission);
+      setSelectedBranchId((current) => current ?? mission.experiments?.[0]?.branches[0]?.id);
+    }).catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load mission"));
+  }, [selectedId]);
+
+  async function createAndRun(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const projection = projections.find((entry) => entry.id === String(data.get("projectionId")));
+    if (!projection) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      const maxBranches = Number(data.get("maxBranches"));
+      const mission = await api.createMission({
+        name: String(data.get("name")),
+        objective: String(data.get("objective")),
+        projectionId: projection.id,
+        successMetric: "sla_breach_rate",
+        guardMetric: "escalation_rate",
+        constraints: {
+          prohibitTicketClosure: true,
+          prohibitExternalMessages: true,
+          maxP1AgeHours: Number(data.get("maxP1AgeHours")),
+          queueCapacity: {
+            "apac-general": Number(data.get("generalCapacity")),
+            integrations: Number(data.get("integrationsCapacity")),
+            overflow: Number(data.get("overflowCapacity")),
+          },
+        },
+        budget: {
+          maxBranches,
+          maxStepsPerBranch: Number(data.get("maxSteps")),
+          maxRuntimeSeconds: Number(data.get("maxRuntime")),
+        },
+        toolScope: ["ticket.priority", "ticket.queue", "ticket.capacity"],
+      });
+      const completed = await api.runMission(mission.id, maxBranches);
+      setShowMissionForm(false);
+      await load();
+      setSelectedId(completed.id);
+      setDetail(completed);
+      setSelectedBranchId(completed.experiments?.[0]?.branches[0]?.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Simulation failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const experiment = detail?.experiments?.[0];
+  const branch = experiment?.branches.find((entry) => entry.id === selectedBranchId)
+    ?? experiment?.branches[0];
+
+  return <div className="app-shell simulation-shell">
+    <aside className="sidebar">
+      <div className="brand"><span className="brand-mark">A</span><b>Agentobe</b></div>
+      <nav>
+        <button type="button">Overview</button>
+        <button type="button" onClick={props.onNavigate}>Backup & Twin</button>
+        <button type="button" className="active">Simulation Space</button>
+        <button type="button">Decisions</button><button type="button">Execution</button><button type="button">Audit</button>
+      </nav>
+      <div className="boundary"><span></span><div><b>Shadow boundary</b><small>0 production credentials · 0 side effects</small></div></div>
+    </aside>
+    <main>
+      <header className="topbar">
+        <div><span className="crumb">Agentobe Console / AI Simulation Space</span><h1>{zh ? "AI Simulation Space / AI 仿真空间" : "AI Simulation Space"}</h1></div>
+        <div className="top-actions">
+          <select className="workspace-select" aria-label="Workspace" value={props.access.workspaceId} onChange={(event) => props.onWorkspaceChange(event.target.value)}>
+            {props.accesses.map((entry) => <option key={entry.workspaceId} value={entry.workspaceId}>{entry.organizationName} / {entry.workspaceName}</option>)}
+          </select>
+          <span className="identity"><b>{props.identityName}</b><small>{props.access.roles.join(" · ")}</small></span>
+          <span className="mode"><i></i>{zh ? "隔离影子运行时" : "Isolated shadow runtime"}</span>
+          <button className="language" onClick={() => setLanguage(zh ? "en" : "zh")}>{zh ? "EN" : "中文"}</button>
+          <button className="language" onClick={props.onLogout}>Sign out</button>
+        </div>
+      </header>
+      <div className="content simulation-content">
+        <section className="intro simulation-intro">
+          <div><span className="eyebrow">SLICE 2 · SHADOW INTELLIGENCE</span><p>{zh ? "固定企业投影，自主建立隔离分支，并以统一指标比较可重放结果。" : "Pin an enterprise projection, explore isolated branches autonomously, and compare replayable outcomes."}</p></div>
+          <div><button className="ghost" disabled={busy} onClick={() => void load()}>{zh ? "刷新" : "Refresh"}</button><button disabled={busy || !can("mission:write") || !can("simulation:run") || projections.length === 0} onClick={() => setShowMissionForm(true)}>{zh ? "创建仿真任务" : "Create mission"}</button></div>
+        </section>
+        {error && <div className="error-banner">{error}</div>}
+        {projections.length === 0 && <div className="simulation-notice"><b>{zh ? "需要固定投影" : "A fixed projection is required"}</b><span>{zh ? "请先回到 Backup & Twin，从健康封存批次生成 AI 投影。" : "Return to Backup & Twin and create an AI projection from a healthy sealed batch."}</span><button className="ghost" onClick={props.onNavigate}>{zh ? "前往备份与镜像" : "Go to Backup & Twin"}</button></div>}
+
+        <section className="metrics simulation-metrics">
+          <article><span>{zh ? "固定投影" : "Pinned projections"}</span><strong>{projections.length}</strong><small>{projections[0]?.projectionHash.slice(0, 12) ?? "—"}</small></article>
+          <article><span>{zh ? "任务" : "Missions"}</span><strong>{missions.length}</strong><small>{missions.filter((item) => item.status === "completed").length} {zh ? "已完成" : "completed"}</small></article>
+          <article><span>{zh ? "隔离分支" : "Isolated branches"}</span><strong>{experiment?.summary.branchCount ?? 0}</strong><small>{experiment?.summary.reproducibleBranches ?? 0} {zh ? "可重放" : "replayable"}</small></article>
+          <article className="integrity"><span>{zh ? "生产副作用" : "Production side effects"}</span><strong>{experiment?.summary.productionSideEffects ?? 0}</strong><small>{zh ? "无生产凭据" : "No production credentials"}</small></article>
+        </section>
+
+        <div className="simulation-grid">
+          <section className="panel mission-list">
+            <div className="panel-title"><div><span>01</span><h2>{zh ? "Missions / 任务" : "Missions"}</h2></div></div>
+            {missions.length === 0 && <div className="empty">{zh ? "尚无任务。创建后运行器会在固定投影上自主完成至少三个分支。" : "No missions yet. The runner will autonomously explore at least three branches on a fixed projection."}</div>}
+            {missions.map((mission) => <button key={mission.id} className={`mission-row ${selectedId === mission.id ? "selected" : ""}`} onClick={() => { setSelectedId(mission.id); setSelectedBranchId(undefined); }}>
+              <span className={`mission-state ${mission.status}`}></span><div><b>{mission.name}</b><small>{mission.status} · {new Date(mission.createdAt).toLocaleString(zh ? "zh-TW" : "en-US")}</small></div><em>{mission.budget.maxBranches}</em>
+            </button>)}
+          </section>
+
+          <section className="panel branch-panel">
+            <div className="panel-title"><div><span>02</span><h2>{zh ? "Branch Comparison / 分支比较" : "Branch Comparison"}</h2></div>{experiment && <span className="status active"><i></i>{experiment.status}</span>}</div>
+            {!experiment ? <div className="empty">{zh ? "选择或运行任务后显示分支指标。" : "Select or run a mission to compare branch metrics."}</div> : <>
+              <div className="mission-summary"><div><small>{zh ? "目标" : "Objective"}</small><p>{detail?.objective}</p></div><div><small>Input hash</small><code>{experiment.inputHash}</code></div></div>
+              <div className="branch-table" role="table">
+                <div className="branch-head" role="row"><span>{zh ? "策略" : "Strategy"}</span><span>SLA %</span><span>{zh ? "队列年龄" : "Age h"}</span><span>{zh ? "升级率" : "Escalation"}</span><span>{zh ? "置信度" : "Confidence"}</span></div>
+                {experiment.branches.map((item) => <button role="row" key={item.id} className={branch?.id === item.id ? "selected" : ""} onClick={() => setSelectedBranchId(item.id)}>
+                  <span><b>{item.name}</b><small>{item.reproducible ? (zh ? "可重放" : "Replayable") : item.status}</small></span><span>{item.metrics.slaBreachRate}<em>{signed(item.delta.slaBreachRate)}</em></span><span>{item.metrics.averageQueueAgeHours}<em>{signed(item.delta.averageQueueAgeHours)}</em></span><span>{item.metrics.escalationRate}<em>{signed(item.delta.escalationRate)}</em></span><span>{Math.round(item.confidence * 100)}%</span>
+                </button>)}
+              </div>
+            </>}
+          </section>
+        </div>
+
+        {branch && <section className="panel replay-panel">
+          <div className="panel-title"><div><span>03</span><h2>{zh ? "Replay & Evidence / 回放与证据" : "Replay & Evidence"}</h2></div><code>{branch.stateHash.slice(0, 16)}</code></div>
+          <div className="replay-grid">
+            <div className="replay-steps">{branch.steps.map((step) => <article key={step.sequence}><span>{String(step.sequence).padStart(2, "0")}</span><div><b>{step.tool}</b><p>{step.summary}</p><code>{step.stateHash.slice(0, 20)}</code></div></article>)}</div>
+            <div className="evidence-notes"><h3>{zh ? "明确假设" : "Explicit assumptions"}</h3>{branch.assumptions.map((item) => <p key={item}>✓ {item}</p>)}<h3>{zh ? "已知盲点" : "Known blind spots"}</h3>{branch.blindSpots.map((item) => <p key={item}>! {item}</p>)}</div>
+          </div>
+        </section>}
+        {showMissionForm && <div className="modal-backdrop" role="presentation">
+          <form className="contract-form mission-form" onSubmit={(event) => void createAndRun(event)}>
+            <div className="form-head"><div><small>FIXED INPUT · ISOLATED TOOLS</small><h2>{zh ? "Create Mission / 创建任务" : "Create Mission"}</h2></div><button type="button" className="ghost" onClick={() => setShowMissionForm(false)}>×</button></div>
+            <div className="form-grid">
+              <label>{zh ? "任务名称" : "Mission name"}<input name="name" required minLength={3} defaultValue={zh ? "SLA 风险自主探索" : "Autonomous SLA Risk Exploration"} /></label>
+              <label>{zh ? "固定投影" : "Pinned projection"}<select name="projectionId" required>{projections.map((projection) => <option key={projection.id} value={projection.id}>{projection.projectionHash.slice(0, 16)} · {projection.payload.tickets.length} tickets</option>)}</select></label>
+              <label className="wide">{zh ? "业务目标" : "Objective"}<textarea name="objective" required minLength={10} defaultValue={zh ? "在不关闭工单或对外发送消息的前提下，降低预测的 SLA 违约率。" : "Reduce projected SLA breach rate without closing tickets or sending external messages."} /></label>
+              <label>{zh ? "最大分支" : "Max branches"}<input name="maxBranches" type="number" min="3" max="4" defaultValue="4" /></label>
+              <label>{zh ? "每分支最大步骤" : "Max steps / branch"}<input name="maxSteps" type="number" min="1" max="100" defaultValue="20" /></label>
+              <label>{zh ? "最长运行秒数" : "Runtime seconds"}<input name="maxRuntime" type="number" min="1" max="3600" defaultValue="60" /></label>
+              <label>{zh ? "P1 最大年龄（小时）" : "Max P1 age (hours)"}<input name="maxP1AgeHours" type="number" min="1" max="720" defaultValue="24" /></label>
+              <label>apac-general capacity<input name="generalCapacity" type="number" min="1" defaultValue="1" /></label>
+              <label>integrations capacity<input name="integrationsCapacity" type="number" min="1" defaultValue="1" /></label>
+              <label>overflow capacity<input name="overflowCapacity" type="number" min="1" defaultValue="2" /></label>
+            </div>
+            <p>{zh ? "运行器只能使用工单优先级、影子队列和模拟容量工具；禁止关闭工单、外发消息和任何生产副作用。" : "The runner is limited to ticket priority, shadow queue, and simulated capacity tools. Ticket closure, external messaging, and production side effects are prohibited."}</p>
+            <div className="form-actions"><button type="button" className="ghost" onClick={() => setShowMissionForm(false)}>{zh ? "取消" : "Cancel"}</button><button disabled={busy}>{busy ? (zh ? "运行中…" : "Running…") : (zh ? "创建并运行" : "Create & run")}</button></div>
+          </form>
+        </div>}
+      </div>
+    </main>
+  </div>;
+}
+
+function signed(value: number): string {
+  if (value === 0) return "—";
+  return value > 0 ? `+${value}` : String(value);
 }

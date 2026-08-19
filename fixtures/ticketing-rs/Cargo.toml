@@ -1,0 +1,10 @@
+[package]
+name = "agentobe-ticketing-fixtures"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+agentobe-contracts = { path = "../../crates/contracts" }
+chrono.workspace = true
+serde_json.workspace = true

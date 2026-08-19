@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: apps/middleware-api/Dockerfile
-    command: ["node", "apps/middleware-api/dist/outbox-main.js"]
+    command: ["/usr/local/bin/agentobe-outbox-worker"]
     environment:
       DATABASE_URL: postgres://agentobe:agentobe-local@postgres:5432/agentobe
       OUTBOX_POLL_INTERVAL_MS: 1000
@@ -21,7 +21,7 @@ services:
       PORT: 4100
       DATABASE_URL: postgres://agentobe:agentobe-local@postgres:5432/agentobe
       PROJECTION_TOKEN_KEY: local-compose-key-change-before-sandbox-use
-      LOG_LEVEL: info
+      RUST_LOG: info
       CONSOLE_ORIGINS: http://localhost:4173,http://localhost:5173
       OIDC_ISSUER: http://localhost:8080/realms/agentobe
       OIDC_AUDIENCE: agentobe-api
@@ -37,9 +37,10 @@ services:
       test:
         [
           "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:4100/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+          "curl",
+          "--fail",
+          "--silent",
+          "http://127.0.0.1:4100/health"
         ]
       interval: 5s
       timeout: 3s

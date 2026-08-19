@@ -1,0 +1,11 @@
+[package]
+name = "agentobe-simulation-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+agentobe-contracts = { path = "../contracts" }
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true

@@ -36,8 +36,8 @@ services:
       timeout_seconds: 5
       failure_threshold: 5
     envs:
-      - key: NODE_ENV
-        value: production
+      - key: RUST_LOG
+        value: info
         scope: RUN_TIME
         type: GENERAL
       - key: HOST
@@ -125,12 +125,12 @@ workers:
       deploy_on_push: true
     source_dir: /
     dockerfile_path: apps/middleware-api/Dockerfile
-    run_command: node apps/middleware-api/dist/outbox-main.js
+    run_command: /usr/local/bin/agentobe-outbox-worker
     instance_count: 1
     instance_size_slug: apps-s-1vcpu-0.5gb
     envs:
-      - key: NODE_ENV
-        value: production
+      - key: RUST_LOG
+        value: info
         scope: RUN_TIME
         type: GENERAL
       - key: DATABASE_URL

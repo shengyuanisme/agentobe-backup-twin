@@ -1,20 +1,19 @@
-FROM node:24-alpine AS build
+FROM rust:1.96-bookworm AS build
 WORKDIR /app
-RUN corepack enable
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
-COPY apps/middleware-api/package.json apps/middleware-api/package.json
-COPY apps/console/package.json apps/console/package.json
-COPY packages/contracts/package.json packages/contracts/package.json
-COPY fixtures/ticketing/package.json fixtures/ticketing/package.json
-RUN pnpm install --frozen-lockfile
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY apps/middleware-api apps/middleware-api
-COPY packages/contracts packages/contracts
-COPY fixtures/ticketing fixtures/ticketing
-RUN pnpm --filter @agentobe/middleware-api... build
+COPY crates crates
+COPY fixtures/ticketing-rs fixtures/ticketing-rs
+RUN cargo build --release -p agentobe-middleware-api --bins
 
-FROM node:24-alpine
-WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=build /app /app
-USER node
-CMD ["node", "apps/middleware-api/dist/main.js"]
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 --create-home agentobe
+COPY --from=build /app/target/release/agentobe-middleware-api /usr/local/bin/
+COPY --from=build /app/target/release/agentobe-outbox-worker /usr/local/bin/
+COPY --from=build /app/target/release/agentobe-db-migrate /usr/local/bin/
+USER agentobe
+ENV RUST_LOG=info
+CMD ["/usr/local/bin/agentobe-middleware-api"]
